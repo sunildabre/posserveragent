@@ -2,6 +2,7 @@ package com.gsd.pos.jobs;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.MalformedURLException;
@@ -9,6 +10,7 @@ import java.net.ProtocolException;
 import java.net.URL;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Properties;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
@@ -126,7 +128,7 @@ public class ShiftCloseReportRetriever implements Runnable {
 			throws MalformedURLException, IOException, ProtocolException,
 			Exception {
 		SQLServerConnectionProvider connection = new SQLServerConnectionProvider(site.getPosIp(), "", "", "");
-		ShiftCloseReportDaoImpl dao = new ShiftCloseReportDaoImpl(connection, site.getSqlVersion());
+		ShiftCloseReportDaoImpl dao = new ShiftCloseReportDaoImpl(connection, this.loadSQLs(site.getSqlVersion()));
 		return dao.getReport(date.toDate());
 		
 	}
@@ -179,7 +181,22 @@ public class ShiftCloseReportRetriever implements Runnable {
 
 
 	
-	
+	private  Properties loadSQLs(String type) {
+		Properties props = new Properties();
+		try {
+			File propsFile = new File(type + ".sqls.txt");
+			if (propsFile.exists()) {
+				logger.trace("loading file from current directory");
+				props.load(new FileInputStream(propsFile));
+			}
+		} catch (IOException ex) {
+			logger.warn(ex);
+			logger.warn(ex.getMessage());
+			ex.printStackTrace();
+		}
+		return props;
+	}
+
 	public static void main(String[] args) throws MalformedURLException, ProtocolException, IOException, Exception {
 		String certpath = System.getProperty("posman.home", "/Users/sunildabre/Documents/workspace/posman") + 
 				File.separator + 	"posagent.ks" ;

@@ -1,0 +1,31 @@
+shift_info=SELECT strt_dt, end_dt FROM globalstore.dbo.prd_aggr  \ 
+	WHERE '#DATE# 12:00:00' BETWEEN strt_dt  AND end_dt AND tbl_cd = 97 
+grand_total=SELECT fuel_total_amount+disc_amount+dept_sls_amount+sls_tax_amount FROM globalstore.dbo.CS_NON_RESET_TOTALS(NOLOCK) \ 
+		WHERE CS_NON_RESET_TOTALS.prd_aggr_id = (SELECT prd_aggr.prd_aggr_id FROM globalstore.dbo.prd_aggr \ 
+		 WHERE '#DATE# 12:00:00' BETWEEN strt_dt AND end_dt AND tbl_cd = 97) and subprd_nbr = 1
+fuel_totals=SELECT sum(fuel_total_vol) ,sum(fuel_total_amount) ,sum(fuel_disc_amount) ,sum(dept_sls_amount) ,sum(disc_amount-fuel_disc_amount) as \"Other Discounts\", \
+		sum(sls_tax_amount) FROM globalstore.dbo.CS_NON_RESET_TOTALS(NOLOCK) WHERE CS_NON_RESET_TOTALS.prd_aggr_id = \
+			 (SELECT prd_aggr.prd_aggr_id FROM globalstore.dbo.prd_aggr WHERE '#DATE# 12:00:00' BETWEEN strt_dt AND end_dt AND tbl_cd = 97 ) AND subprd_nbr != 0
+fuel_volumes=SELECT itm_id, sum(fuel_total_vol), sum(fuel_total_amount) FROM globalstore.dbo.CS_NON_RESET_FUEL_TOTALS(NOLOCK) \ 
+	WHERE CS_NON_RESET_FUEL_TOTALS.prd_aggr_id = (SELECT prd_aggr.prd_aggr_id  FROM globalstore.dbo.prd_aggr  \
+		WHERE ‘#DATE# 12:00:00' BETWEEN strt_dt AND end_dt AND tbl_cd = 97 ) AND subprd_nbr != 0  group by itm_id
+fuel_inventory=SELECT  datetime, TankID, ProductName, Volume FROM    globalstore.dbo.G_Fuel_TankMonitorReading GFT \
+	 INNER JOIN (   SELECT  periodid, MAX(datetime) AS last_shift FROM  globalstore.dbo.G_Fuel_TankMonitorReading  GROUP BY periodid  )  \
+	 MaxPeriod ON GFT.periodid = MaxPeriod.periodid  AND GFT.datetime = MaxPeriod.last_shift where GFT.periodid = \
+	  ( SELECT prd_aggr.prd_aggr_id FROM globalstore.dbo.prd_aggr WHERE ‘#DATE#  12:00:00' BETWEEN strt_dt    AND end_dt AND tbl_cd = 97  ) and subperiodid = 0
+carwash_sales=Select SUM(sls_amount) as salesamount, SUM(sls_cnt) as salescount,    SUM(rtn_amount) as refundamount, SUM(rtn_cnt) as refundcount,  \
+	   SUM(disc_amount) as discamount, SUM(disc_cnt) as disccount,  SUM(sls_amount)+   SUM(rtn_amount)+   SUM(disc_amount) as netsales  \
+	     From globalstore.dbo.CS_CARWASH_SLS_CUR     WHERE CS_CARWASH_SLS_CUR.PRD_AGGR_ID    = \ 
+	     (SELECT prd_aggr.prd_aggr_id    FROM globalstore.dbo.prd_aggr         WHERE ‘#DATE# 12:00:00' BETWEEN strt_dt AND end_dt  AND tbl_cd = 97 ) \ 
+	     AND   CS_CARWASH_SLS_CUR.SUBPRD_NBR = 0 AND    CS_CARWASH_SLS_CUR.package_id IN  \
+	     (SELECT PKG_ID FROM globalstore.dbo.CS_WASH_PKG) AND  CS_CARWASH_SLS_CUR.PLU in  \
+	     (SELECT OPTIONS_STR.OPT_VALUE FROM globalstore.dbo.OPTIONS_STR WHERE OPTIONS_STR.OPT_ID in (13009,13010))
+payments=SELECT TENDER.TND_DESCR AS TndDesc ,sum(CS_ITEMTYPE_SLS_BY_TND.INSIDE_SLS_AMT) + sum(CS_ITEMTYPE_SLS_BY_TND.OUTSIDE_SLS_AMT) AS Amount \
+	 FROM globalstore.dbo.CS_ITEMTYPE_SLS_BY_TND(NOLOCK) INNER JOIN globalstore.dbo.TENDER(NOLOCK) ON CS_ITEMTYPE_SLS_BY_TND.TND_CD = TENDER.TND_CD  \
+	 WHERE CS_ITEMTYPE_SLS_BY_TND.PRD_AGGR_ID = (SELECT prd_aggr.prd_aggr_id FROM globalstore.dbo.prd_aggr \ 
+	 WHERE ‘#DATE# 12:00:00' BETWEEN strt_dt AND end_dt AND tbl_cd = 97) AND CS_ITEMTYPE_SLS_BY_TND.SUBPRD_NBR != 0 GROUP BY TENDER.TND_DESCR
+discounts=select itm_id, sls_unt_tot, othr_md_tot, othr_md_accm_amt from globalstore.dbo.cs_fuel_sls_hist \ 
+	WHERE cs_fuel_sls_hist.prd_aggr_id = (SELECT prd_aggr.prd_aggr_id FROM globalstore.dbo.prd_aggr \ 
+	WHERE '#DATE# 12:00:00' BETWEEN strt_dt AND end_dt  AND tbl_cd = 97) \
+	 AND subprd_nbr != 0 and evnt_id = 0	
+

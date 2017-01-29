@@ -1,9 +1,5 @@
 package com.gsd.pos.agent.dao.impl;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -13,32 +9,29 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 
 import org.apache.log4j.Logger;
 
 import com.gsd.pos.agent.dao.ShiftCloseReportDao;
 import com.gsd.pos.model.CarwashSales;
+import com.gsd.pos.model.Discount;
 import com.gsd.pos.model.FuelInventory;
 import com.gsd.pos.model.FuelSales;
 import com.gsd.pos.model.Payment;
 import com.gsd.pos.model.ShiftReport;
 import com.gsd.pos.model.Totals;
-import com.gsd.pos.utils.Config;
 
 public class ShiftCloseReportDaoImpl implements ShiftCloseReportDao {
 	private static final Logger logger = Logger
 			.getLogger(ShiftCloseReportDaoImpl.class.getName());
 	private static DateFormat df = new SimpleDateFormat("yyyy-MM-dd");
 	private Connection con;
-	private String type ;
 	private Properties props; 
 	
-	public ShiftCloseReportDaoImpl(SQLServerConnectionProvider connection, String type) throws SQLException {
+	public ShiftCloseReportDaoImpl(SQLServerConnectionProvider connection, Properties sqls) throws SQLException {
 		this.con = connection.getConnection();
-		this.type = type;
-		this.loadSQLs();
+		this.props = sqls;
 	}
 	public ShiftReport getReport(Date dt) {
 		ShiftReport report = new ShiftReport();
@@ -54,6 +47,7 @@ public class ShiftCloseReportDaoImpl implements ShiftCloseReportDao {
 			setStoreInfo(report, con);
 			setGrandTotal(report, date, con);
 			setCarwashSales(report, date, con);
+			setDiscounts(report, date, con);
 		} catch (Exception ex) {
 			ex.printStackTrace();
 		} finally {
@@ -344,6 +338,34 @@ public class ShiftCloseReportDaoImpl implements ShiftCloseReportDao {
 		}
 	}
 	
+	private void setDiscounts(ShiftReport report, String date, Connection con)
+			throws SQLException {
+		PreparedStatement st = null;
+		List<Discount> sales = new ArrayList<Discount>();
+		report.setDiscounts(sales);
+		try {
+			String sql = getSQL("discounts");
+			sql = sql.replace("#DATE#", date);
+			logger.trace("Executing sql " + sql);
+			st = con.prepareStatement(sql);
+			ResultSet rs = st.executeQuery();
+			while (rs.next()) {
+				Discount f = new Discount();
+				f.setGrade(rs.getString(1));
+				f.setCount(rs.getInt(2));
+				f.setAmount(rs.getBigDecimal(3));
+				sales.add(f);
+			}
+
+		} finally {
+			try {
+				if (st != null) {
+					st.close();
+				}
+			} catch (SQLException se) {
+			}
+		}
+	}
 	
 	private String getSQL(String sqlFor) {
 		String sql  = props.getProperty(sqlFor);
@@ -351,19 +373,5 @@ public class ShiftCloseReportDaoImpl implements ShiftCloseReportDao {
 		
 	}
 	
-	private  void loadSQLs() {
-		props = new Properties();
-		try {
-			File propsFile = new File(this.type + ".sqls.txt");
-			if (propsFile.exists()) {
-				logger.trace("loading file from current directory");
-				props.load(new FileInputStream(propsFile));
-			}
-		} catch (IOException ex) {
-			logger.warn(ex);
-			logger.warn(ex.getMessage());
-			ex.printStackTrace();
-		}
-	}
-
+	
 }
