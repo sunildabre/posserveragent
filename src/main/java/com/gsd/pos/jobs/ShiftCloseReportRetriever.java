@@ -32,6 +32,8 @@ import com.gsd.pos.model.Site;
 import com.gsd.pos.utils.Config;
 
 public class ShiftCloseReportRetriever implements Runnable {
+	
+	private boolean SKIP_HTTP = Boolean.parseBoolean(System.getProperty("skip_http", "false"));
 	private SitesDao dao;
 	private static final Logger logger = Logger
 			.getLogger(ShiftCloseReportRetriever.class.getName());
@@ -76,7 +78,13 @@ public class ShiftCloseReportRetriever implements Runnable {
 		DateTime now = new DateTime();
 		try {
 			logger.debug(String.format("Processing site [%s]  ", s.getName()));
-			if ((s.getIp() == null) || (s.getIp().isEmpty())) {
+			String c = s.getConnectionType();
+			if(!"direct".equalsIgnoreCase(c) && this.SKIP_HTTP) {
+				logger.debug("Skipping HTTP Pull  !!");
+				return;
+			}
+
+			if ((!"direct".equalsIgnoreCase(c)) && (s.getIp() == null) || (s.getIp().isEmpty())) {
 				logger.warn(String.format(
 						"Ip for site [%s] is not set,cannot fetch ",
 						s.getName()));
@@ -93,6 +101,10 @@ public class ShiftCloseReportRetriever implements Runnable {
 			int repeat = (int) reportsToRetrieve;
 			for (int i = 0; i <= repeat; i++) {
 				ShiftReport report = retrieveReport(s, dt);
+				if (report == null) {
+//					logger.debug("Report was not pulled  !!");
+					continue;
+				}
 				report.setSiteId(s.getSiteId());
 				if ((report.getStartTime() == null) || (report.getEndTime() == null)) {
 					logger.debug("No shift information found !!");
@@ -127,7 +139,10 @@ public class ShiftCloseReportRetriever implements Runnable {
 	private ShiftReport pullDirect(Site site, DateTime date)
 			throws MalformedURLException, IOException, ProtocolException,
 			Exception {
-		SQLServerConnectionProvider connection = new SQLServerConnectionProvider(site.getPosIp(), "", "", "");
+		logger.debug("Pulling directly over DB connection ");
+		String userName = Config.getProperty("posdb.username", "sa");
+		String password = Config.getProperty("posdb.password", "6820Commerce");
+		SQLServerConnectionProvider connection = new SQLServerConnectionProvider(site.getPosIp(), "", userName, password);
 		ShiftCloseReportDaoImpl dao = new ShiftCloseReportDaoImpl(connection, this.loadSQLs(site.getSqlVersion()));
 		return dao.getReport(date.toDate());
 		
@@ -139,9 +154,12 @@ public class ShiftCloseReportRetriever implements Runnable {
 			Exception {
 		URL url = new URL("https://" + site.getIp()
 				+ "/reports?name=shift_close&date=" + date);
+		if (SKIP_HTTP) {
+			logger.debug("skipping ");
+			return null;
+		}
 		logger.debug("Connecting to [" + url.toString() + "]");
 		System.out.println("Connecting to [" + url.toString() + "]");
-
 		HttpsURLConnection conn = (HttpsURLConnection) url
 				.openConnection();
 		conn.setRequestMethod("GET");
@@ -211,7 +229,12 @@ public class ShiftCloseReportRetriever implements Runnable {
 		site.setIp("96.91.220.2");
 		site.setConnectionType	("agent");
 		ShiftCloseReportRetriever retriever = new  ShiftCloseReportRetriever();
-		ShiftReport s = retriever.retrieveReport(site, new DateTime("2016.12.14"));
-		System.out.println(s.toString());
+		ShiftReport s = retriever.retrieveReport(site,  DateTime.parse("2016-12-14"));
+		if (s != null) {
+			System.out.println(s.toString());
+		} else {
+			System.out.println("Report is null");
+
+		}
 	}
 }
