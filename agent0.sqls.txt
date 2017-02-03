@@ -24,8 +24,8 @@ payments=SELECT TENDER.TND_DESCR AS TndDesc ,sum(CS_ITEMTYPE_SLS_BY_TND.INSIDE_S
 	 FROM globalstore.dbo.CS_ITEMTYPE_SLS_BY_TND(NOLOCK) INNER JOIN globalstore.dbo.TENDER(NOLOCK) ON CS_ITEMTYPE_SLS_BY_TND.TND_CD = TENDER.TND_CD  \
 	 WHERE CS_ITEMTYPE_SLS_BY_TND.PRD_AGGR_ID = (SELECT prd_aggr.prd_aggr_id FROM globalstore.dbo.prd_aggr \ 
 	 WHERE ‘#DATE# 12:00:00' BETWEEN strt_dt AND end_dt AND tbl_cd = 97) AND CS_ITEMTYPE_SLS_BY_TND.SUBPRD_NBR != 0 GROUP BY TENDER.TND_DESCR
-discounts=select itm_id, sls_unt_tot, othr_md_accm_amt from globalstore.dbo.cs_fuel_sls_hist \
-	 WHERE cs_fuel_sls_hist.prd_aggr_id = (  SELECT prd_aggr.prd_aggr_id   \
-	 FROM globalstore.dbo.prd_aggr  WHERE '#DATE# 12:00:00' BETWEEN strt_dt   AND end_dt  AND tbl_cd = 97  )  \
-	 AND subprd_nbr = 0 and evnt_id = 0	
+discounts=select p.dspl_descr, sum(cs.othr_md_tot), SUM(cs.othr_md_accm_amt)  \ 
+	from globalstore.dbo.cs_fuel_sls_hist cs, globalstore.dbo.plu p WHERE cs.itm_id = p.plu_id \
+	 and cs.prd_aggr_id = ( SELECT prd_aggr.prd_aggr_id   FROM globalstore.dbo.prd_aggr \ 
+	  WHERE '#DATE# 12:00:00' BETWEEN strt_dt   AND end_dt  AND tbl_cd = 97  )  AND cs.subprd_nbr = 0 group by p.dspl_descr
 
