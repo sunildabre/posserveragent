@@ -50,6 +50,7 @@ public class ShiftCloseReportRetriever implements Runnable {
 		try {
 			retrieveAndStoreReportsForAll();
 		} catch (SQLException e) {
+			logger.error(e);
 			e.printStackTrace();
 		}
 	}
@@ -79,12 +80,12 @@ public class ShiftCloseReportRetriever implements Runnable {
 		try {
 			logger.debug(String.format("Processing site [%s]  ", s.getName()));
 			String c = s.getConnectionType();
-			if(!"direct".equalsIgnoreCase(c) && this.SKIP_HTTP) {
+			if("agent".equalsIgnoreCase(c) && this.SKIP_HTTP) {
 				logger.debug("Skipping HTTP Pull  !!");
 				return;
 			}
 
-			if ((!"direct".equalsIgnoreCase(c)) && (s.getIp() == null) || (s.getIp().isEmpty())) {
+			if (("agent".equalsIgnoreCase(c)) && ((s.getIp() == null) || (s.getIp().isEmpty()))) {
 				logger.warn(String.format(
 						"Ip for site [%s] is not set,cannot fetch ",
 						s.getName()));
@@ -94,6 +95,9 @@ public class ShiftCloseReportRetriever implements Runnable {
 					+ ((s.getLastCollectedDate() == null) ? null : s.getLastCollectedDate()) + "]");
 			DateTime dt = (s.getLastCollectedDate() == null) ? now.minusDays(7)
 					: new DateTime(s.getLastCollectedDate());
+			if (dt.isBefore(now.minusDays(10)) ) {
+				dt = now.minusDays(10);
+			}
 			long reportsToRetrieve = Days.daysBetween(dt.toDateMidnight() , now.toDateMidnight() ).getDays();
 //			long reportsToRetrieve = new Duration(dt, now).getStandardDays();
 			logger.debug(String.format("Collecting from [%s] , sending [%s] requests ", dt.toString(),
@@ -125,11 +129,11 @@ public class ShiftCloseReportRetriever implements Runnable {
 		} catch (Exception e) {
 			e.printStackTrace();
 			logger.warn(String.format("Error fetching for site [%s] ", s.getName()));
-			logger.warn(e.getMessage());
+			logger.warn(e.getMessage(), e);
 			try {
 				dao.updateSiteReason(s.getSiteId(), e.getMessage());
 			} catch (Exception e1) {
-				// TODO Auto-generated catch block
+				logger.warn(e1.getMessage(), e1);
 				e1.printStackTrace();
 			}
 			e.printStackTrace();
@@ -137,8 +141,7 @@ public class ShiftCloseReportRetriever implements Runnable {
 	}
 
 	private ShiftReport pullDirect(Site site, DateTime date)
-			throws MalformedURLException, IOException, ProtocolException,
-			Exception {
+			throws Exception {
 		logger.debug("Pulling directly over DB connection ");
 		String userName = Config.getProperty("posdb.username", "sa");
 		String password = Config.getProperty("posdb.password", "6820Commerce");
@@ -185,8 +188,7 @@ public class ShiftCloseReportRetriever implements Runnable {
 
 
 	private ShiftReport retrieveReport(Site site, DateTime date)
-			throws MalformedURLException, IOException, ProtocolException,
-			Exception {
+			throws Exception {
 		String c = site.getConnectionType();
 		String d = date.toString("yyyy.MM.dd");
 
@@ -199,13 +201,18 @@ public class ShiftCloseReportRetriever implements Runnable {
 
 
 	
-	private  Properties loadSQLs(String type) {
+	private  Properties loadSQLs(String type) throws Exception {
 		Properties props = new Properties();
 		try {
-			File propsFile = new File(type + ".sqls.txt");
+			String fileName = "agent" + type + ".sqls.txt";
+			File propsFile = new File(fileName);
 			if (propsFile.exists()) {
 				logger.trace("loading file from current directory");
 				props.load(new FileInputStream(propsFile));
+			} else {
+				String error = "File ["  + fileName + "] does not exist !!!";
+				logger.error(error);
+				throw new Exception(error);
 			}
 		} catch (IOException ex) {
 			logger.warn(ex);
@@ -229,12 +236,23 @@ public class ShiftCloseReportRetriever implements Runnable {
 		site.setIp("96.91.220.2");
 		site.setConnectionType	("agent");
 		ShiftCloseReportRetriever retriever = new  ShiftCloseReportRetriever();
-		ShiftReport s = retriever.retrieveReport(site,  DateTime.parse("2016-12-14"));
-		if (s != null) {
-			System.out.println(s.toString());
-		} else {
-			System.out.println("Report is null");
+		Properties props = retriever.loadSQLs("0");
+		System.out.println(props.get("fuel_volumes"));
+		
+		System.out.println("shift_info  " + props.get("shift_info"));
+		System.out.println("grand_total  " + props.get("grand_total"));
+		System.out.println("fuel_totals  " + props.get("fuel_totals"));
+		System.out.println("fuel_inventory  " + props.get("fuel_inventory"));
+		System.out.println("carwash_sales  " + props.get("carwash_sales"));
+		System.out.println("payments  " + props.get("payments"));
+		System.out.println("discounts  " +  props.get("discounts"));
 
-		}
+//		ShiftReport s = retriever.retrieveReport(site,  DateTime.parse("2016-12-14"));
+//		if (s != null) {
+//			System.out.println(s.toString());
+//		} else {
+//			System.out.println("Report is null");
+//
+//		}
 	}
 }

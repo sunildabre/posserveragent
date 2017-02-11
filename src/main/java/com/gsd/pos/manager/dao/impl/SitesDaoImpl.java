@@ -28,6 +28,7 @@ public class SitesDaoImpl implements SitesDao {
 	private static final Logger logger = Logger.getLogger(SitesDaoImpl.class
 			.getName());
 	private Connection con;
+	private boolean overwrite = System.getProperty("overwrite_reports", "false").equalsIgnoreCase("true");
 	
 	public SitesDaoImpl(ConnectionProvider connection) throws SQLException {
 		this.con = connection.getConnection();
@@ -35,7 +36,7 @@ public class SitesDaoImpl implements SitesDao {
 
 	@Override
 	public boolean saveReport(ShiftReport report) {
-		return saveReport(report, false);
+		return saveReport(report, overwrite);
 	}
 
 	public boolean saveReport(ShiftReport report, boolean overwrite) {
@@ -197,6 +198,10 @@ public class SitesDaoImpl implements SitesDao {
 	private void addDiscount(Long shiftId, Discount d, Connection con) throws SQLException {
 		PreparedStatement st = null;
 		try {
+			if (d.getCount() ==0  ) {
+				logger.debug("Not inserting discount , since it is 0");
+				return;
+			}
 			String sql = "insert into discount (shift_id, grade,"
 					+ "count, amount) "
 					+ "values (?,?,?,?) ";
