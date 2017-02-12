@@ -30,7 +30,7 @@ public class MySqlConnectionProvider implements ConnectionProvider {
 		this.initConnection();
 	}
 
-	public Connection getConnection() throws SQLException {
+	public Connection getConnection()  {
 		return conn;
 	}
 

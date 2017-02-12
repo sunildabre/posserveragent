@@ -8,6 +8,7 @@ import java.io.InputStreamReader;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Properties;
@@ -32,8 +33,9 @@ import com.gsd.pos.model.Site;
 import com.gsd.pos.utils.Config;
 
 public class ShiftCloseReportRetriever implements Runnable {
-	
-	private boolean SKIP_HTTP = Boolean.parseBoolean(System.getProperty("skip_http", "false"));
+
+	private boolean SKIP_HTTP = Boolean.parseBoolean(System.getProperty(
+			"skip_http", "false"));
 	private SitesDao dao;
 	private static final Logger logger = Logger
 			.getLogger(ShiftCloseReportRetriever.class.getName());
@@ -46,20 +48,24 @@ public class ShiftCloseReportRetriever implements Runnable {
 	}
 
 	public void run() {
-		logger.debug("Starting report retrieval thread ...");
+		logger.debug("Starting report retrieval at "
+				+ DateTime.now().toString("yyyy/MM/dd hh:mm:ss"));
+		MySqlConnectionProvider connection;
 		try {
-			retrieveAndStoreReportsForAll();
+			connection = new MySqlConnectionProvider();
+			retrieveAndStoreReportsForAll(connection.getConnection());
+
 		} catch (SQLException e) {
-			logger.error(e);
+			logger.error("Can not connect to SMS DB  " + e.getMessage(), e);
 			e.printStackTrace();
 		}
-	}
-	
-	
-	public void retrieveAndStoreReportsForAll() throws SQLException {
-		logger.debug("Starting report retrieval ...");
-		MySqlConnectionProvider connection = new MySqlConnectionProvider();
 
+		logger.debug("Completed run  report retrieval thread at "
+				+ DateTime.now().toString("yyyy/MM/dd hh:mm:ss"));
+
+	}
+
+	public void retrieveAndStoreReportsForAll(Connection connection) {
 		dao = new SitesDaoImpl(connection);
 		List<Site> sites = dao.getSites();
 		logger.debug("Got [" + sites.size() + "] sites");
@@ -70,8 +76,7 @@ public class ShiftCloseReportRetriever implements Runnable {
 
 	public void retrieveAndStoreReports(Long siteId) throws SQLException {
 		MySqlConnectionProvider connection = new MySqlConnectionProvider();
-
-		dao = new SitesDaoImpl(connection);
+		dao = new SitesDaoImpl(connection.getConnection());
 		retrieveAndStoreReports(dao.getSite(siteId));
 	}
 
@@ -80,43 +85,48 @@ public class ShiftCloseReportRetriever implements Runnable {
 		try {
 			logger.debug(String.format("Processing site [%s]  ", s.getName()));
 			String c = s.getConnectionType();
-			if("agent".equalsIgnoreCase(c) && this.SKIP_HTTP) {
+			if ("agent".equalsIgnoreCase(c) && this.SKIP_HTTP) {
 				logger.debug("Skipping HTTP Pull  !!");
 				return;
 			}
 
-			if (("agent".equalsIgnoreCase(c)) && ((s.getIp() == null) || (s.getIp().isEmpty()))) {
+			if (("agent".equalsIgnoreCase(c))
+					&& ((s.getIp() == null) || (s.getIp().isEmpty()))) {
 				logger.warn(String.format(
 						"Ip for site [%s] is not set,cannot fetch ",
 						s.getName()));
 				return;
 			}
 			logger.debug("Last Collected date is ["
-					+ ((s.getLastCollectedDate() == null) ? null : s.getLastCollectedDate()) + "]");
+					+ ((s.getLastCollectedDate() == null) ? null : s
+							.getLastCollectedDate()) + "]");
 			DateTime dt = (s.getLastCollectedDate() == null) ? now.minusDays(7)
 					: new DateTime(s.getLastCollectedDate());
-			if (dt.isBefore(now.minusDays(10)) ) {
+			if (dt.isBefore(now.minusDays(10))) {
 				dt = now.minusDays(10);
 			}
-			long reportsToRetrieve = Days.daysBetween(dt.toDateMidnight() , now.toDateMidnight() ).getDays();
-//			long reportsToRetrieve = new Duration(dt, now).getStandardDays();
-			logger.debug(String.format("Collecting from [%s] , sending [%s] requests ", dt.toString(),
-					reportsToRetrieve));
+			long reportsToRetrieve = Days.daysBetween(dt.toDateMidnight(),
+					now.toDateMidnight()).getDays();
+			// long reportsToRetrieve = new Duration(dt, now).getStandardDays();
+			logger.debug(String.format(
+					"Collecting from [%s] , sending [%s] requests ",
+					dt.toString(), reportsToRetrieve));
 			int repeat = (int) reportsToRetrieve;
 			for (int i = 0; i <= repeat; i++) {
 				ShiftReport report = retrieveReport(s, dt);
 				if (report == null) {
-//					logger.debug("Report was not pulled  !!");
+					// logger.debug("Report was not pulled  !!");
 					continue;
 				}
 				report.setSiteId(s.getSiteId());
-				if ((report.getStartTime() == null) || (report.getEndTime() == null)) {
+				if ((report.getStartTime() == null)
+						|| (report.getEndTime() == null)) {
 					logger.debug("No shift information found !!");
 					dt = dt.plusDays(1);
 					continue;
 				}
-				if (new Duration(new DateTime(report.getStartTime()), new DateTime(report.getEndTime()))
-						.getStandardDays() > 7) {
+				if (new Duration(new DateTime(report.getStartTime()),
+						new DateTime(report.getEndTime())).getStandardDays() > 7) {
 					logger.debug("Shift Not Closed!!");
 					dt = dt.plusDays(1);
 					continue;
@@ -128,7 +138,8 @@ public class ShiftCloseReportRetriever implements Runnable {
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
-			logger.warn(String.format("Error fetching for site [%s] ", s.getName()));
+			logger.warn(String.format("Error fetching for site [%s] ",
+					s.getName()));
 			logger.warn(e.getMessage(), e);
 			try {
 				dao.updateSiteReason(s.getSiteId(), e.getMessage());
@@ -140,18 +151,19 @@ public class ShiftCloseReportRetriever implements Runnable {
 		}
 	}
 
-	private ShiftReport pullDirect(Site site, DateTime date)
-			throws Exception {
+	private ShiftReport pullDirect(Site site, DateTime date) throws Exception {
 		logger.debug("Pulling directly over DB connection ");
 		String userName = Config.getProperty("posdb.username", "sa");
 		String password = Config.getProperty("posdb.password", "6820Commerce");
-		SQLServerConnectionProvider connection = new SQLServerConnectionProvider(site.getPosIp(), "", userName, password);
-		ShiftCloseReportDaoImpl dao = new ShiftCloseReportDaoImpl(connection, this.loadSQLs(site.getSqlVersion()));
+		String dbname = Config.getProperty("posdb.dbname", "");
+		SQLServerConnectionProvider connection = new SQLServerConnectionProvider(
+				site.getPosIp(), dbname, userName, password);
+		ShiftCloseReportDaoImpl dao = new ShiftCloseReportDaoImpl(connection,
+				this.loadSQLs(site.getSqlVersion()));
 		return dao.getReport(date.toDate());
-		
+
 	}
 
-	
 	private ShiftReport pullViaAgent(Site site, String date)
 			throws MalformedURLException, IOException, ProtocolException,
 			Exception {
@@ -163,16 +175,15 @@ public class ShiftCloseReportRetriever implements Runnable {
 		}
 		logger.debug("Connecting to [" + url.toString() + "]");
 		System.out.println("Connecting to [" + url.toString() + "]");
-		HttpsURLConnection conn = (HttpsURLConnection) url
-				.openConnection();
+		HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
 		conn.setRequestMethod("GET");
 		conn.setRequestProperty("Accept", "application/json");
 		if (conn.getResponseCode() != 200) {
 			throw new Exception("Failed : HTTP error code : "
 					+ conn.getResponseCode());
 		}
-		BufferedReader in = new BufferedReader(
-				new InputStreamReader(conn.getInputStream()));
+		BufferedReader in = new BufferedReader(new InputStreamReader(
+				conn.getInputStream()));
 		StringBuffer r = new StringBuffer();
 		String res = null;
 		while ((res = in.readLine()) != null) {
@@ -180,28 +191,24 @@ public class ShiftCloseReportRetriever implements Runnable {
 		}
 		conn.disconnect();
 		Gson gson = new Gson();
-		ShiftReport report = gson.fromJson(r.toString(),
-				ShiftReport.class);
+		ShiftReport report = gson.fromJson(r.toString(), ShiftReport.class);
 
 		return report;
 	}
-
 
 	private ShiftReport retrieveReport(Site site, DateTime date)
 			throws Exception {
 		String c = site.getConnectionType();
 		String d = date.toString("yyyy.MM.dd");
 
-		if("direct".equalsIgnoreCase(c)) {
+		if ("direct".equalsIgnoreCase(c)) {
 			return this.pullDirect(site, date);
 		}
 		return this.pullViaAgent(site, d);
-	
+
 	}
 
-
-	
-	private  Properties loadSQLs(String type) throws Exception {
+	private Properties loadSQLs(String type) throws Exception {
 		Properties props = new Properties();
 		try {
 			String fileName = "agent" + type + ".sqls.txt";
@@ -210,7 +217,7 @@ public class ShiftCloseReportRetriever implements Runnable {
 				logger.trace("loading file from current directory");
 				props.load(new FileInputStream(propsFile));
 			} else {
-				String error = "File ["  + fileName + "] does not exist !!!";
+				String error = "File [" + fileName + "] does not exist !!!";
 				logger.error(error);
 				throw new Exception(error);
 			}
@@ -222,9 +229,11 @@ public class ShiftCloseReportRetriever implements Runnable {
 		return props;
 	}
 
-	public static void main(String[] args) throws MalformedURLException, ProtocolException, IOException, Exception {
-		String certpath = System.getProperty("posman.home", "/Users/sunildabre/Documents/workspace/posman") + 
-				File.separator + 	"posagent.ks" ;
+	public static void main(String[] args) throws MalformedURLException,
+			ProtocolException, IOException, Exception {
+		String certpath = System.getProperty("posman.home",
+				"/Users/sunildabre/Documents/workspace/posman")
+				+ File.separator + "posagent.ks";
 		logger.debug("Cert path [" + certpath + "]");
 		System.setProperty("javax.net.ssl.keyStore", certpath);
 		System.setProperty("javax.net.ssl.keyStorePassword", "password");
@@ -232,27 +241,28 @@ public class ShiftCloseReportRetriever implements Runnable {
 		System.setProperty("javax.net.ssl.trustStore", certpath);
 
 		Site site = new Site();
-		//801 washingtons
+		// 801 washingtons
 		site.setIp("96.91.220.2");
-		site.setConnectionType	("agent");
-		ShiftCloseReportRetriever retriever = new  ShiftCloseReportRetriever();
+		site.setConnectionType("agent");
+		ShiftCloseReportRetriever retriever = new ShiftCloseReportRetriever();
 		Properties props = retriever.loadSQLs("0");
 		System.out.println(props.get("fuel_volumes"));
-		
+
 		System.out.println("shift_info  " + props.get("shift_info"));
 		System.out.println("grand_total  " + props.get("grand_total"));
 		System.out.println("fuel_totals  " + props.get("fuel_totals"));
 		System.out.println("fuel_inventory  " + props.get("fuel_inventory"));
 		System.out.println("carwash_sales  " + props.get("carwash_sales"));
 		System.out.println("payments  " + props.get("payments"));
-		System.out.println("discounts  " +  props.get("discounts"));
+		System.out.println("discounts  " + props.get("discounts"));
 
-//		ShiftReport s = retriever.retrieveReport(site,  DateTime.parse("2016-12-14"));
-//		if (s != null) {
-//			System.out.println(s.toString());
-//		} else {
-//			System.out.println("Report is null");
-//
-//		}
+		// ShiftReport s = retriever.retrieveReport(site,
+		// DateTime.parse("2016-12-14"));
+		// if (s != null) {
+		// System.out.println(s.toString());
+		// } else {
+		// System.out.println("Report is null");
+		//
+		// }
 	}
 }

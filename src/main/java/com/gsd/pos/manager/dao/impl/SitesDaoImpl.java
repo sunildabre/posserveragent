@@ -13,7 +13,6 @@ import java.util.List;
 import org.apache.log4j.Logger;
 import org.joda.time.DateTime;
 
-import com.gsd.pos.dao.ConnectionProvider;
 import com.gsd.pos.manager.dao.SitesDao;
 import com.gsd.pos.model.CarwashSales;
 import com.gsd.pos.model.Discount;
@@ -30,8 +29,8 @@ public class SitesDaoImpl implements SitesDao {
 	private Connection con;
 	private boolean overwrite = System.getProperty("overwrite_reports", "false").equalsIgnoreCase("true");
 	
-	public SitesDaoImpl(ConnectionProvider connection) throws SQLException {
-		this.con = connection.getConnection();
+	public SitesDaoImpl(Connection connection)  {
+		this.con = connection;
 	}
 
 	@Override

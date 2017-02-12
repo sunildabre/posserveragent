@@ -34,7 +34,7 @@ public class SQLServerConnectionProvider implements ConnectionProvider {
 	}
 
 
-	public Connection getConnection() throws SQLException {
+	public Connection getConnection()  {
 		return conn;
 	}
 
